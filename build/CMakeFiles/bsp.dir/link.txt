@@ -1,0 +1,1 @@
+/usr/bin/cc CMakeFiles/bsp.dir/main.c.o -o bsp  raylib/raylib/libraylib.a -lpthread /usr/lib/x86_64-linux-gnu/libOpenGL.so /usr/lib/x86_64-linux-gnu/libGLX.so /usr/lib/x86_64-linux-gnu/libGLU.so /usr/lib/x86_64-linux-gnu/librt.a -lm -ldl -lm 
