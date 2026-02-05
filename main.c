@@ -14,6 +14,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <time.h>
+#include <math.h>
 #define MIN_SIZE_ROOM 7
 #define CELL_WIDTH    20
 #define CELL_HEIGHT   20
@@ -196,31 +197,23 @@ void generateRoom(BSPNode* node) {
     id_counter++;
 }
 
-Rect getNearestRoom(BSPNode* node, int target_x, int target_y) {
-    return node->front->room;
-}
+BSPNode* connectRooms(BSPNode* node) { // by postorder
+    if (node == NULL) return node;
+    if (node->back == NULL && node->front == NULL) return node;
 
-void connectRooms(BSPNode* node) { // by postorder
-    if (node == NULL) return;
-    if (node->back == NULL || node->front == NULL) return;
-
-    connectRooms(node->back);
-    connectRooms(node->front);
+    BSPNode* back_room = connectRooms(node->back);
+    BSPNode* front_room = connectRooms(node->front);
 
     // cols and rows for back and front nodes
-    const int COLS_ONE = node->back->room.w;    
-    const int ROWS_ONE = node->back->room.h;   
+    const int COLS_ONE = back_room->room.w;    
+    const int ROWS_ONE = back_room->room.h;   
 
-    int targetX = node->back->area.x + (node->front->area.x / 2);
-    int targetY = node->back->area.y + (node->front->area.y / 2);
-    const Rect front = getNearestRoom(node->back, targetX, targetY);
-
-    const int COLS_TWO = node->front->room.w;    
-    const int ROWS_TWO = node->front->room.h;   
+    const int COLS_TWO = front_room->room.w;    
+    const int ROWS_TWO = front_room->room.h;   
 
     if (COLS_ONE <= 0 || ROWS_ONE <= 0 || COLS_TWO <= 0 || ROWS_TWO <= 0) {
         fprintf(stderr, "Error: Room dimensions invalid\n");
-        return;
+        return node;
     }
 
     // generate exit cells
@@ -231,20 +224,20 @@ void connectRooms(BSPNode* node) { // by postorder
     int rantbt = rand() % (COLS_TWO); // two
     int ranlrt = rand() % (ROWS_TWO); // two
 
-    node->back->room.grid[rantbo][ranlro].kind = EXIT;
-    node->back->room.grid[rantbo][ranlro].color = RED;
+    back_room->room.grid[rantbo][ranlro].kind = EXIT;
+    back_room->room.grid[rantbo][ranlro].color = RED;
 
-    node->front->room.grid[rantbt][ranlrt].kind = EXIT;
-    node->front->room.grid[rantbt][ranlrt].color = BLUE;
+    front_room->room.grid[rantbt][ranlrt].kind = EXIT;
+    front_room->room.grid[rantbt][ranlrt].color = BLUE;
 
     Path pa = {0};
 
     // absolute values
-    int x1 = node->back->room.x + rantbo;
-    int y1 = node->back->room.y + ranlro;
+    int x1 = back_room->room.x + rantbo;
+    int y1 = back_room->room.y + ranlro;
 
-    int x2 = node->front->room.x + rantbt;
-    int y2 = node->front->room.y + ranlrt;
+    int x2 = front_room->room.x + rantbt;
+    int y2 = front_room->room.y + ranlrt;
 
     while (x1 != x2 || y1 != y2)    {
         if (x1 != x2) {
@@ -264,6 +257,8 @@ void connectRooms(BSPNode* node) { // by postorder
     }
     
     node->area.path = pa;
+
+    return (rand()%2 == 0) ? front_room : back_room;
 }
 
 void generateNodes(BSPNode* node, int depth, enum Split last_split) {
@@ -374,7 +369,8 @@ int main(void) {
 
     BSPNode* root = createNode(root_area);
     generateNodes(root, greates_depth, NONE);
-    connectRooms(root);
+    // let "ready" be any leaf
+    BSPNode* ready = connectRooms(root);
 
     InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "bsp");
     int animation_speed = 128;
