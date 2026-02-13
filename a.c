@@ -103,29 +103,7 @@ void drawNodes(BSPNode* node, int current_depth, int max_depth) {
         BLACK
     );
 
-    if (debug) {
-        for (int i = 0; i < node->room.w; i++) {
-            for (int j = 0; j < node->room.h; j++) {
-                if (node->room.grid[i][j].kind == EXIT || node->room.grid[i][j].kind == MAIN_CHARACTER) 
-                    DrawRectangle(
-                        node->room.grid[i][j].pos.x*CELL_WIDTH,
-                        node->room.grid[i][j].pos.y*CELL_HEIGHT,
-                        CELL_WIDTH,
-                        CELL_HEIGHT,
-                        node->room.grid[i][j].color
-                    );
-                else 
-                    DrawRectangleLines(
-                        node->room.grid[i][j].pos.x*CELL_WIDTH,
-                        node->room.grid[i][j].pos.y*CELL_HEIGHT,
-                        CELL_WIDTH,
-                        CELL_HEIGHT,
-                        node->room.grid[i][j].color
-                    );
-            }
-        }
-        
-    }
+
     // draw nodes
     drawNodes(node->back, current_depth+1, max_depth);
     drawNodes(node->front, current_depth+1, max_depth);
@@ -136,12 +114,34 @@ void drawNodes(BSPNode* node, int current_depth, int max_depth) {
             node->area.path.items[i].y * CELL_HEIGHT,
             CELL_WIDTH, 
             CELL_HEIGHT,
-            MAROON
+            BLACK
         );
     }
-}
 
-static Character chara;
+    if (debug) {
+        for (int i = 0; i < node->room.w; i++) {
+            for (int j = 0; j < node->room.h; j++) {
+                if (node->room.grid[i][j].kind != EXIT) 
+                    DrawRectangleLines(
+                        node->room.grid[i][j].pos.x*CELL_WIDTH,
+                        node->room.grid[i][j].pos.y*CELL_HEIGHT,
+                        CELL_WIDTH,
+                        CELL_HEIGHT,
+                        node->room.grid[i][j].color
+                    );
+                else 
+                    DrawRectangle(
+                        node->room.grid[i][j].pos.x*CELL_WIDTH,
+                        node->room.grid[i][j].pos.y*CELL_HEIGHT,
+                        CELL_WIDTH,
+                        CELL_HEIGHT,
+                        node->room.grid[i][j].color
+                    );
+            }
+        }
+        
+    }
+}
 
 BSPNode* createNode(Rect area) {
     BSPNode* new_node = (BSPNode*)malloc(sizeof(BSPNode));
@@ -156,21 +156,22 @@ enum Split {
     HORIZONTAL
 } Split;
 
-
-// better i would make the character and placint items, mobs in the global grid (roote->area)
-void placingMobs(BSPNode* node) {
-    int COLS = node->room.w;
-    int ROWS = node->room.h;
+// // the nodes are rooms
+// void placingMobs(BSPNode* node) {
+//     int COLS = node->room.w;
+//     int ROWS = node->room.h;
     
-    int ranX = rand() % COLS;
-    int ranY = rand() % ROWS;
-    if (id_counter == 0) {
-        node->room.grid[ranX][ranY].color = BLUE;
-        node->room.grid[ranX][ranY].kind = MAIN_CHARACTER;
-        chara.x = ranX;
-        chara.y = ranY;
-    }
-}
+//     int ranX = rand() % COLS;
+//     int ranY = rand() % ROWS;
+//     if (id_counter == 0) {
+//         node->room.grid[ranX][ranY].color = BLUE;
+//         node->room.grid[ranX][ranY].kind = MAIN_CHARACTER;
+//         Character chara;
+//         chara.x = ranX;
+//         chara.y = ranY;
+
+//     }
+// }
 
 void generateRoom(BSPNode* node) {
     // padding
@@ -217,7 +218,7 @@ void generateRoom(BSPNode* node) {
             node->room.grid[i][j].id   = id_counter;
         }
     }
-    placingMobs(node);
+    // placingMobs(node);
     id_counter++;
 }
 
@@ -285,9 +286,27 @@ BSPNode* connectRooms(BSPNode* node) { // by postorder
     return (rand()%2 == 0) ? front_room : back_room;
 }
 
+void freeNode(BSPNode* node) {
+    if (node == NULL) return;
+    
+    if (node->room.grid != NULL) {
+        for (int i = 0; i < node->room.w; i++) {
+            free(node->room.grid[i]);
+        }
+        free(node->room.grid);
+    }
+    
+    if (node->area.path.items != NULL) {
+        free(node->area.path.items);
+    }
+    
+    freeNode(node->back);
+    freeNode(node->front);
+    
+    free(node);
+}
+
 void generateNodes(BSPNode* node, int depth, enum Split last_split) {
-
-
     if (depth == 0) {
         generateRoom(node);
         return;
@@ -343,49 +362,17 @@ void generateNodes(BSPNode* node, int depth, enum Split last_split) {
     generateNodes(node->front, depth-1, split);
 }
 
-void freeNode(BSPNode* node) {
-    if (node == NULL) return;
-    int COLS_A = node->area.w;
-    if (node->area.grid != NULL) {
-        for (int i = 0; i < COLS_A; i++)    {
-            free(node->area.grid[i]);
-        }
-        free(node->area.grid);
-    }
-
-    // if is leaf    
-    if (node->back == NULL && node->front == NULL && node->room.grid != NULL) {
-        int COLS_R = node->room.w;
-        for (int i = 0; i < COLS_R; i++) {
-            free(node->room.grid[i]);
-        }
-        free(node->room.grid);
-    }
-
-    if (node->area.path.items != NULL) {
-        free(node->area.path.items);
-    }
-
-    freeNode(node->back);
-    freeNode(node->front);
-
-    free(node);
-}
-
 int main(void) {
     int taim = time(NULL);
     srand(taim);
     printf("%d \n", taim);
-    int SCREEN_WIDTH = 800;
-    int SCREEN_HEIGHT = 600;
+    const int SCREEN_WIDTH = 800;
+    const int SCREEN_HEIGHT = 600;
     int greates_depth = 3;
     Cell **grid;
 
     int COLS = (int)(SCREEN_WIDTH/CELL_WIDTH);
     int ROWS = (int)(SCREEN_HEIGHT/CELL_HEIGHT);
-
-    printf("cols: %d\n", COLS);
-    printf("rows: %d\n", ROWS);
 
 
     grid = malloc(sizeof(Cell*)*COLS);
@@ -410,27 +397,27 @@ int main(void) {
     BSPNode* root = createNode(root_area);
     generateNodes(root, greates_depth, NONE);
     // let "ready" be any leaf
-    BSPNode* ready = connectRooms(root);
+    BSPNode* ready = connectRooms(root); // i though let is a variable lmao (js dev issues)
 
     SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_VSYNC_HINT);
     InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "bsp");
-    SetWindowMinSize(SCREEN_WIDTH, SCREEN_HEIGHT);
+
     int animation_speed = 128;
+    SetWindowMinSize(SCREEN_WIDTH, SCREEN_HEIGHT);
     SetTargetFPS(60);
     int max_depth = 0;
     while (!WindowShouldClose()) {
-        if (IsWindowResized()) {
-            freeNode(root);
-            srand(taim);
-            id_counter = 0;
-            frames = 0;
-            connect = 0;
-            SCREEN_WIDTH = GetScreenWidth();
-            SCREEN_HEIGHT = GetScreenHeight();
-            greates_depth = 3;
 
-            COLS = (int)(SCREEN_WIDTH/CELL_WIDTH);
-            ROWS = (int)(SCREEN_HEIGHT/CELL_HEIGHT);
+        if (IsWindowResized()) {
+            srand(taim);
+            for (int i = 0; i < COLS; i++) {
+                free(grid[i]);
+            }
+            free(grid);
+            freeNode(root);    
+            
+            COLS = (int)(GetScreenWidth()/CELL_WIDTH);
+            ROWS = (int)(GetScreenHeight()/CELL_HEIGHT);
 
             grid = malloc(sizeof(Cell*)*COLS);
             for (int i = 0; i < COLS; i++) {
@@ -442,7 +429,9 @@ int main(void) {
                     grid[i][j].id = id_counter;
                 }
             }
-
+            id_counter = 0;
+            max_depth = 0;
+          
             root_area = (Rect){
                 .h = ROWS,
                 .w = COLS,
@@ -450,19 +439,18 @@ int main(void) {
                 .y = 0, // rows
                 .grid = grid,
             };
-
+            
             root = createNode(root_area);
+
             generateNodes(root, greates_depth, NONE);
             ready = connectRooms(root);
+        };
 
-        }
-        
         BeginDrawing();
             if (IsKeyPressed(KEY_D)) debug = !debug;
 
             if (IsKeyPressed(KEY_P)) pause = !pause;
             if (pause) frames--;
-            if (!pause) frames++;
 
             if (frames % animation_speed == 0 && max_depth < greates_depth+1) {
                 max_depth++;
@@ -481,6 +469,11 @@ int main(void) {
         EndDrawing();
     }
     
+    for (int i = 0; i < COLS; i++) {
+        free(grid[i]);
+    }
+    free(grid);
+    freeNode(root);
     CloseWindow();
     return 0;
 }
