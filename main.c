@@ -19,9 +19,7 @@
 #define CELL_WIDTH    20
 #define CELL_HEIGHT   20
 #define NONE          2
-static int id_counter = 0;
-static int frames = 0;
-static int connect = 0;
+#define VISION_RADIUS 10
 typedef struct CellPos {
     int x;
     int y;
@@ -81,67 +79,38 @@ typedef struct BSPNode {
 
 typedef struct Map {
     Rect area;
-    struct BSPNode* root;
+    int  frames;
+    int  id_counter;
+    int  level;
+    bool next;
 } Map;
 static bool pause = false;
+static Character chara;
 
-void drawNodes(BSPNode* node, int current_depth, int max_depth) {
+void drawNodes(BSPNode* node, int current_depth, int max_depth, Map* map) {
     if (node == NULL || current_depth > max_depth) return;
+    int startX = chara.x - VISION_RADIUS*3;  
+    int endX   = chara.x + VISION_RADIUS*3;
+    int startY = chara.y - VISION_RADIUS*3;
+    int endY   = chara.y + VISION_RADIUS*3;
 
-    DrawRectangleLines(
-        node->area.x*CELL_WIDTH, 
-        node->area.y*CELL_HEIGHT, 
-        node->area.w*CELL_WIDTH, 
-        node->area.h*CELL_HEIGHT, 
-        BLUE
-    );
-    DrawRectangle(
-        node->room.x*CELL_WIDTH, 
-        node->room.y*CELL_HEIGHT,
-        node->room.w*CELL_WIDTH,
-        node->room.h*CELL_HEIGHT, 
-        BLACK
-    );
+    if (startX < 0) startX = 0; // yeah...
+    if (startY < 0) startY = 0; // for limits
+    if (endX > map->area.w) endX = map->area.w; // same
+    if (endY > map->area.h) endY = map->area.h; // here
 
-    if (debug) {
-        for (int i = 0; i < node->room.w; i++) {
-            for (int j = 0; j < node->room.h; j++) {
-                if (node->room.grid[i][j].kind == EXIT || node->room.grid[i][j].kind == MAIN_CHARACTER) 
-                    DrawRectangle(
-                        node->room.grid[i][j].pos.x*CELL_WIDTH,
-                        node->room.grid[i][j].pos.y*CELL_HEIGHT,
-                        CELL_WIDTH,
-                        CELL_HEIGHT,
-                        node->room.grid[i][j].color
-                    );
-                else 
-                    DrawRectangleLines(
-                        node->room.grid[i][j].pos.x*CELL_WIDTH,
-                        node->room.grid[i][j].pos.y*CELL_HEIGHT,
-                        CELL_WIDTH,
-                        CELL_HEIGHT,
-                        node->room.grid[i][j].color
-                    );
-            }
+    for (int i = startX; i < endX; i++)  {
+        for (int j = startY; j < endY; j++)  {
+            DrawRectangle(
+                i * CELL_WIDTH,
+                j * CELL_HEIGHT,
+                CELL_WIDTH, CELL_HEIGHT, // we can add -1 to see the cells "rejilla" in englis idk rej?
+                map->area.grid[i][j].color
+            );
         }
-        
-    }
-    // draw nodes
-    drawNodes(node->back, current_depth+1, max_depth);
-    drawNodes(node->front, current_depth+1, max_depth);
-    // Draw Paths 
-    for (int i = 0; i < node->area.path.count; i++) {
-        DrawRectangle(
-            node->area.path.items[i].x * CELL_WIDTH,
-            node->area.path.items[i].y * CELL_HEIGHT,
-            CELL_WIDTH, 
-            CELL_HEIGHT,
-            MAROON
-        );
     }
 }
 
-static Character chara;
 
 BSPNode* createNode(Rect area) {
     BSPNode* new_node = (BSPNode*)malloc(sizeof(BSPNode));
@@ -156,23 +125,35 @@ enum Split {
     HORIZONTAL
 } Split;
 
+// better i would make the character and placint items, mobs in the global grid (root->area)
+void placingMobs(Map* map) {
+    int COLS = map->area.w;
+    int ROWS = map->area.h;
+    bool founded = false;
+    bool isExit = false;
+    for (int i = 0; i < COLS; i++)  {
+        for (int j = 0; j < ROWS; j++)  {
+            if (map->area.grid[i][j].id == map->id_counter - 2 && !isExit) {
+                map->area.grid[i][j].color = BLUE;
+                map->area.grid[i][j].kind = EXIT;
+                isExit = true;
+            }
 
-// better i would make the character and placint items, mobs in the global grid (roote->area)
-void placingMobs(BSPNode* node) {
-    int COLS = node->room.w;
-    int ROWS = node->room.h;
-    
-    int ranX = rand() % COLS;
-    int ranY = rand() % ROWS;
-    if (id_counter == 0) {
-        node->room.grid[ranX][ranY].color = BLUE;
-        node->room.grid[ranX][ranY].kind = MAIN_CHARACTER;
-        chara.x = ranX;
-        chara.y = ranY;
+            // character, his name is Pablo
+            if (map->area.grid[i][j].kind == GROUND && map->area.grid[i][j].id == 0 && !founded) {
+                map->area.grid[i][j].kind = MAIN_CHARACTER;
+                map->area.grid[i][j].color = BLACK;
+                chara.h = 1;
+                chara.w = 1;
+                chara.x = i;
+                chara.y = j;
+                founded = true;
+            }
+        }
     }
 }
 
-void generateRoom(BSPNode* node) {
+void generateRoom(BSPNode* node, Map* map) {
     // padding
     int padX = 1; // substrating 3 columns
     int padY = 1; // substrating 3 rows
@@ -213,20 +194,22 @@ void generateRoom(BSPNode* node) {
                 .y = j + node->room.y
             };
             node->room.grid[i][j].color = GRAY;
-            node->room.grid[i][j].kind = GROUND;
-            node->room.grid[i][j].id   = id_counter;
+            node->room.grid[i][j].kind  = GROUND;
+            node->room.grid[i][j].id    = map->id_counter;
+            map->area.grid[i+node->room.x][j+node->room.y].color  = GRAY;
+            map->area.grid[i+node->room.x][j+node->room.y].kind   = GROUND;
+            map->area.grid[i+node->room.x][j+node->room.y].id     = map->id_counter;
         }
     }
-    placingMobs(node);
-    id_counter++;
+    map->id_counter+=1;
 }
 
-BSPNode* connectRooms(BSPNode* node) { // by postorder
+BSPNode* connectRooms(BSPNode* node, Map* map) { // by postorder
     if (node == NULL) return node;
     if (node->back == NULL && node->front == NULL) return node;
 
-    BSPNode* back_room = connectRooms(node->back);
-    BSPNode* front_room = connectRooms(node->front);
+    BSPNode* back_room = connectRooms(node->back, map);
+    BSPNode* front_room = connectRooms(node->front, map);
 
     // cols and rows for back and front nodes
     const int COLS_ONE = back_room->room.w;    
@@ -248,11 +231,15 @@ BSPNode* connectRooms(BSPNode* node) { // by postorder
     int rantbt = rand() % (COLS_TWO); // two
     int ranlrt = rand() % (ROWS_TWO); // two
 
-    back_room->room.grid[rantbo][ranlro].kind = EXIT;
-    back_room->room.grid[rantbo][ranlro].color = RED;
+    back_room->room.grid[rantbo][ranlro].kind = GROUND;
+    back_room->room.grid[rantbo][ranlro].color = GRAY;
+    map->area.grid[rantbo+back_room->room.x][ranlro+back_room->room.y].kind = GROUND;
+    map->area.grid[rantbo+back_room->room.x][ranlro+back_room->room.y].color = GRAY;
 
-    front_room->room.grid[rantbt][ranlrt].kind = EXIT;
-    front_room->room.grid[rantbt][ranlrt].color = BLUE;
+    front_room->room.grid[rantbt][ranlrt].kind = GROUND;
+    front_room->room.grid[rantbt][ranlrt].color = GRAY;
+    map->area.grid[rantbt+front_room->room.x][ranlrt+front_room->room.y].kind = GROUND;
+    map->area.grid[rantbt+front_room->room.x][ranlrt+front_room->room.y].color = GRAY;
 
     Path pa = {0};
 
@@ -277,6 +264,9 @@ BSPNode* connectRooms(BSPNode* node) { // by postorder
             .y = y1
         };
 
+        map->area.grid[x1][y1].color = GRAY;
+        map->area.grid[x1][y1].kind = GROUND;
+
         path_append(pa, pos);
     }
     
@@ -285,11 +275,9 @@ BSPNode* connectRooms(BSPNode* node) { // by postorder
     return (rand()%2 == 0) ? front_room : back_room;
 }
 
-void generateNodes(BSPNode* node, int depth, enum Split last_split) {
-
-
+void generateNodes(BSPNode* node, int depth, enum Split last_split, Map* map) {
     if (depth == 0) {
-        generateRoom(node);
+        generateRoom(node, map);
         return;
     }
 
@@ -339,8 +327,8 @@ void generateNodes(BSPNode* node, int depth, enum Split last_split) {
     node->back = createNode(back_area);
     node->front = createNode(front_area);
     
-    generateNodes(node->back, depth-1, split);
-    generateNodes(node->front, depth-1, split);
+    generateNodes(node->back, depth-1, split, map);
+    generateNodes(node->front, depth-1, split, map);
 }
 
 void freeNode(BSPNode* node) {
@@ -372,21 +360,48 @@ void freeNode(BSPNode* node) {
     free(node);
 }
 
+void moveChara(Map* map, int dx, int dy) {
+    int nextX = chara.x + dx;
+    int nextY = chara.y - dy;
+
+    if (map->area.grid[nextX][nextY].kind == EXIT) {
+        map->level++;
+        map->next = true;
+    }; 
+
+    if (nextX < map->area.w || nextY < map->area.h) {
+        if (map->area.grid[nextX][nextY].kind == GROUND) {
+            
+            map->area.grid[chara.x][chara.y].kind = GROUND;
+            map->area.grid[chara.x][chara.y].color = GRAY;
+
+            chara.y = nextY;
+            chara.x = nextX;
+
+            map->area.grid[chara.x][chara.y].kind = MAIN_CHARACTER;
+            map->area.grid[chara.x][chara.y].color = BLACK;
+        }
+
+    }
+
+}
+
 int main(void) {
     int taim = time(NULL);
     srand(taim);
     printf("%d \n", taim);
-    int SCREEN_WIDTH = 800;
-    int SCREEN_HEIGHT = 600;
+    InitWindow(100, 200, "bsp");
+
+    int monitor = GetCurrentMonitor();
+    int SCREEN_WIDTH = GetMonitorWidth(monitor);
+    int SCREEN_HEIGHT = GetMonitorHeight(monitor);
     int greates_depth = 3;
     Cell **grid;
-
-    int COLS = (int)(SCREEN_WIDTH/CELL_WIDTH);
-    int ROWS = (int)(SCREEN_HEIGHT/CELL_HEIGHT);
-
+    Map map;
+    int COLS = SCREEN_WIDTH/CELL_WIDTH;
+    int ROWS = SCREEN_HEIGHT/CELL_HEIGHT;
     printf("cols: %d\n", COLS);
     printf("rows: %d\n", ROWS);
-
 
     grid = malloc(sizeof(Cell*)*COLS);
     for (int i = 0; i < COLS; i++) {
@@ -395,7 +410,7 @@ int main(void) {
             grid[i][j] = (Cell) { .pos.x = i, .pos.y = j };
             grid[i][j].kind  = EMPTY;
             grid[i][j].color = WHITE;
-            grid[i][j].id = id_counter;
+            grid[i][j].id = map.id_counter;
         }
     }
 
@@ -407,78 +422,107 @@ int main(void) {
         .grid = grid,
     };
 
-    BSPNode* root = createNode(root_area);
-    generateNodes(root, greates_depth, NONE);
-    // let "ready" be any leaf
-    BSPNode* ready = connectRooms(root);
+    map.area = root_area;
+    map.frames = 0;
+    map.id_counter = 0;
+    map.level = 0;
+    map.next = false;
 
-    SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_VSYNC_HINT);
-    InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "bsp");
-    SetWindowMinSize(SCREEN_WIDTH, SCREEN_HEIGHT);
+    BSPNode* root = createNode(root_area);
+    generateNodes(root, greates_depth, NONE, &map);
+    // let "ready" be any leaf
+    BSPNode* ready = connectRooms(root, &map);
+    placingMobs(&map);
+
+    Camera2D pablo = { 0 };
+    pablo.target = (Vector2){.x = chara.x, .y = chara.y};
+    pablo.offset = (Vector2){SCREEN_WIDTH, SCREEN_HEIGHT};
+    pablo.rotation = 0.0f;
+    pablo.zoom = 1.5f;
+
+    RenderTexture2D screenPablo = LoadRenderTexture(SCREEN_WIDTH, SCREEN_HEIGHT);
+
+    SetConfigFlags(FLAG_WINDOW_TOPMOST | FLAG_WINDOW_UNDECORATED);
+    ToggleFullscreen();
     int animation_speed = 128;
     SetTargetFPS(60);
     int max_depth = 0;
+    int speed = 4;
     while (!WindowShouldClose()) {
-        if (IsWindowResized()) {
-            freeNode(root);
-            srand(taim);
-            id_counter = 0;
-            frames = 0;
-            connect = 0;
-            SCREEN_WIDTH = GetScreenWidth();
-            SCREEN_HEIGHT = GetScreenHeight();
-            greates_depth = 3;
-
-            COLS = (int)(SCREEN_WIDTH/CELL_WIDTH);
-            ROWS = (int)(SCREEN_HEIGHT/CELL_HEIGHT);
-
+        if (map.next) {
+            // freeNode(root);
+            
             grid = malloc(sizeof(Cell*)*COLS);
             for (int i = 0; i < COLS; i++) {
-                grid[i] = malloc(sizeof(Cell) * ROWS);
-                for (int j = 0; j < ROWS; j++)  {
-                    grid[i][j] = (Cell) { .pos.x = i, .pos.y = j };
-                    grid[i][j].kind  = EMPTY;
-                    grid[i][j].color = WHITE;
-                    grid[i][j].id = id_counter;
+                    grid[i] = malloc(sizeof(Cell) * ROWS);
+                    for (int j = 0; j < ROWS; j++)  {
+                        grid[i][j] = (Cell) { .pos.x = i, .pos.y = j };
+                        grid[i][j].kind  = EMPTY;
+                        grid[i][j].color = WHITE;
+                        grid[i][j].id = map.id_counter;
+                    }
                 }
+
+                root_area = (Rect){
+                    .h = ROWS,
+                    .w = COLS,
+                    .x = 0, // cols
+                    .y = 0, // rows
+                    .grid = grid,
+                };
+
+                map.area = root_area;
+                map.frames = 0;
+                map.id_counter = 0;
+                map.next = false;
+                srand(taim + map.level);
+                root = createNode(root_area);
+                generateNodes(root, greates_depth, NONE, &map);
+                // let "ready" be any leaf
+                BSPNode* ready = connectRooms(root, &map);
+                placingMobs(&map);
+
             }
+            
+            if (IsKeyDown(KEY_RIGHT)) if(map.frames % speed == 0) moveChara(&map, 1, 0);
+            if (IsKeyDown(KEY_DOWN))  if(map.frames % speed == 0) moveChara(&map, 0, -1);
+            if (IsKeyDown(KEY_UP))    if(map.frames % speed == 0) moveChara(&map, 0, 1);
+            if (IsKeyDown(KEY_LEFT))  if(map.frames % speed == 0) moveChara(&map, -1, 0);
 
-            root_area = (Rect){
-                .h = ROWS,
-                .w = COLS,
-                .x = 0, // cols
-                .y = 0, // rows
-                .grid = grid,
-            };
 
-            root = createNode(root_area);
-            generateNodes(root, greates_depth, NONE);
-            ready = connectRooms(root);
-
-        }
-        
-        BeginDrawing();
             if (IsKeyPressed(KEY_D)) debug = !debug;
-
             if (IsKeyPressed(KEY_P)) pause = !pause;
-            if (pause) frames--;
-            if (!pause) frames++;
+            if (pause) map.frames--;
+            if (!pause) map.frames++;
 
-            if (frames % animation_speed == 0 && max_depth < greates_depth+1) {
+            if (map.frames % animation_speed == 0 && max_depth < greates_depth+1) {
                 max_depth++;
             }
-            ClearBackground(RAYWHITE);
-            drawNodes(root, 0, max_depth);
 
-            if (max_depth < greates_depth+1) {
-                DrawText("Loading...", 20, 20, 20, MAROON);
-            } else {
-                DrawText("¡GAAA! Generation completed", 20, 20, 20, DARKGREEN);
-            }
+        ClearBackground(RAYWHITE);
 
+
+        pablo.target = (Vector2){ chara.x * CELL_WIDTH, chara.y * CELL_HEIGHT };
+        pablo.offset = (Vector2){ SCREEN_WIDTH/2, SCREEN_HEIGHT/2 };
+
+        BeginDrawing();
+            BeginTextureMode(screenPablo);
+                ClearBackground(WHITE);
+                BeginMode2D(pablo);
+                    drawNodes(root, 0, max_depth, &map);
+                EndMode2D();
+            EndTextureMode();
+        
+            DrawTextureRec(
+                screenPablo.texture,
+                (Rectangle){0, 0, screenPablo.texture.width, -screenPablo.texture.height},
+                (Vector2){0, 0},
+                WHITE
+            );
             if (pause) DrawText("Pause", 50, 50, 20, RED);
-
         EndDrawing();
+    EndDrawing();
+
     }
     
     CloseWindow();
